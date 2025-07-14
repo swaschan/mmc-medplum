@@ -18,10 +18,25 @@ export function SignInPage(): JSX.Element {
   }, [searchParams, navigate]);
 
   useEffect(() => {
+    // Redirect to add default project ID if none is specified
+    if (!searchParams.has('project') && config.defaultProjectId) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.set('project', config.defaultProjectId);
+      
+      // Preserve any other query parameters like 'next'
+      const nextParam = searchParams.get('next');
+      if (nextParam) {
+        newParams.set('next', nextParam);
+      }
+      
+      navigate({ pathname: '/signin', search: newParams.toString() }, { replace: true })?.catch(console.error);
+      return;
+    }
+
     if (profile && searchParams.has('next')) {
       navigateToNext();
     }
-  }, [profile, searchParams, navigateToNext]);
+  }, [profile, searchParams, navigate, navigateToNext, config.defaultProjectId]);
 
   return (
     <SignInForm
