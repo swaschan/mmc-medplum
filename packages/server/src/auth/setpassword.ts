@@ -2,7 +2,7 @@ import { allOk, badRequest } from '@medplum/core';
 import { PasswordChangeRequest, Reference, User, UserSecurityRequest } from '@medplum/fhirtypes';
 import { Request, Response } from 'express';
 import { body } from 'express-validator';
-import { pwnedPassword } from 'hibp';
+// import { pwnedPassword } from 'hibp';
 import { sendOutcome } from '../fhir/outcomes';
 import { getSystemRepo } from '../fhir/repo';
 import { timingSafeEqualStr } from '../oauth/utils';
@@ -43,11 +43,12 @@ export async function setPasswordHandler(req: Request, res: Response): Promise<v
 
   const user = await systemRepo.readReference(securityRequest.user as Reference<User>);
 
-  const numPwns = await pwnedPassword(req.body.password);
-  if (numPwns > 0) {
-    sendOutcome(res, badRequest('Password found in breach database', 'password'));
-    return;
-  }
+  // Commented out HIBP password check
+  // const numPwns = await pwnedPassword(req.body.password);
+  // if (numPwns > 0) {
+  //   sendOutcome(res, badRequest('Password found in breach database', 'password'));
+  //   return;
+  // }
 
   await setPassword({ ...user, emailVerified: true }, req.body.password);
   await systemRepo.updateResource<typeof securityRequest>({ ...securityRequest, used: true });

@@ -3,7 +3,7 @@ import { Reference, User } from '@medplum/fhirtypes';
 import bcrypt from 'bcryptjs';
 import { Request, Response } from 'express';
 import { body } from 'express-validator';
-import { pwnedPassword } from 'hibp';
+// import { pwnedPassword } from 'hibp';
 import { getAuthenticatedContext } from '../context';
 import { sendOutcome } from '../fhir/outcomes';
 import { getSystemRepo } from '../fhir/repo';
@@ -47,10 +47,11 @@ async function changePassword(request: ChangePasswordRequest): Promise<void> {
     throw new OperationOutcomeError(badRequest('Incorrect password', 'oldPassword'));
   }
 
-  const numPwns = await pwnedPassword(request.newPassword);
-  if (numPwns > 0) {
-    throw new OperationOutcomeError(badRequest('Password found in breach database', 'newPassword'));
-  }
+  // Commented out HIBP password check
+  // const numPwns = await pwnedPassword(request.newPassword);
+  // if (numPwns > 0) {
+  //   throw new OperationOutcomeError(badRequest('Password found in breach database', 'newPassword'));
+  // }
 
   const newPasswordHash = await bcryptHashPassword(request.newPassword);
   const systemRepo = getSystemRepo();
