@@ -1,25 +1,17 @@
 import {
   AccessPolicyInteraction,
-  BackgroundJobInteraction,
-  DEFAULT_MAX_SEARCH_COUNT,
-  Filter,
-  OperationOutcomeError,
-  Operator,
-  PropertyType,
-  SearchParameterDetails,
-  SearchParameterType,
-  SearchRequest,
-  TypedValue,
-  WithId,
   accessPolicySupportsInteraction,
   allOk,
   arrayify,
+  BackgroundJobInteraction,
   badRequest,
   createReference,
   deepClone,
   deepEquals,
+  DEFAULT_MAX_SEARCH_COUNT,
   evalFhirPath,
   evalFhirPathTyped,
+  Filter,
   forbidden,
   formatSearchQuery,
   getReferenceString,
@@ -36,19 +28,27 @@ import {
   normalizeErrorString,
   normalizeOperationOutcome,
   notFound,
+  OperationOutcomeError,
+  Operator,
   parseReference,
   parseSearchRequest,
   preconditionFailed,
+  PropertyType,
   protectedResourceTypes,
   readInteractions,
   resolveId,
   satisfiedAccessPolicy,
+  SearchParameterDetails,
+  SearchParameterType,
+  SearchRequest,
   serverError,
   sleep,
   stringify,
   toPeriod,
+  TypedValue,
   validateResource,
   validateResourceType,
+  WithId,
 } from '@medplum/core';
 import { CreateResourceOptions, FhirRepository, RepositoryMode, UpdateResourceOptions } from '@medplum/fhir-router';
 import {
@@ -82,17 +82,17 @@ import { getBinaryStorage } from '../storage/loader';
 import {
   AuditEventOutcome,
   AuditEventSubtype,
+  createAuditEvent,
   CreateInteraction,
   DeleteInteraction,
   HistoryInteraction,
+  logAuditEvent,
   PatchInteraction,
   ReadInteraction,
   RestfulOperationType,
   SearchInteraction,
   UpdateInteraction,
   VreadInteraction,
-  createAuditEvent,
-  logAuditEvent,
 } from '../util/auditevent';
 import { patchObject } from '../util/patch';
 import { addBackgroundJobs } from '../workers';
@@ -103,8 +103,8 @@ import { getPatients } from './patient';
 import { preCommitValidation } from './precommit';
 import { replaceConditionalReferences, validateResourceReferences } from './references';
 import { getFullUrl } from './response';
-import { RewriteMode, rewriteAttachments } from './rewrite';
-import { SearchOptions, buildSearchExpression, searchByReferenceImpl, searchImpl } from './search';
+import { rewriteAttachments, RewriteMode } from './rewrite';
+import { buildSearchExpression, searchByReferenceImpl, searchImpl, SearchOptions } from './search';
 import { ColumnSearchParameterImplementation, getSearchParameterImplementation, lookupTables } from './searchparameter';
 import {
   Condition,
@@ -112,16 +112,17 @@ import {
   Disjunction,
   Expression,
   InsertQuery,
-  SelectQuery,
-  TransactionIsolationLevel,
   normalizeDatabaseError,
   periodToRangeString,
+  PostgresError,
+  SelectQuery,
+  TransactionIsolationLevel,
 } from './sql';
 import { buildTokenColumns } from './token-column';
 
 const defaultTransactionAttempts = 2;
 const defaultExpBackoffBaseDelayMs = 50;
-const retryableTransactionErrorCodes = ['40001'];
+const retryableTransactionErrorCodes: string[] = [PostgresError.SerializationFailure];
 
 /**
  * The RepositoryContext interface defines standard metadata for repository actions.
@@ -2428,10 +2429,19 @@ export class Repository extends FhirRepository<PoolClient> implements Disposable
     const transactionAttempts = config.transactionAttempts ?? defaultTransactionAttempts;
     let error: OperationOutcomeError | undefined;
     for (let attempt = 0; attempt < transactionAttempts; attempt++) {
+      const attemptStartTime = Date.now();
       try {
         const client = await this.beginTransaction(options?.serializable ? 'SERIALIZABLE' : undefined);
         const result = await callback(client);
         await this.commitTransaction();
+        if (attempt > 0) {
+          getLogger().info('Completed transaction', {
+            attempt,
+            attemptDurationMs: Date.now() - attemptStartTime,
+            transactionAttempts,
+            serializable: options?.serializable ?? false,
+          });
+        }
         return result;
       } catch (err) {
         const operationOutcomeError = normalizeDatabaseError(err);
@@ -2447,15 +2457,30 @@ export class Repository extends FhirRepository<PoolClient> implements Disposable
         this.endTransaction();
       }
 
+      const attemptDurationMs = Date.now() - attemptStartTime;
+
       if (attempt + 1 < transactionAttempts) {
         const baseDelayMs = config.transactionExpBackoffBaseDelayMs ?? defaultExpBackoffBaseDelayMs;
-        // Attempts are 0-indexed, so first wait after first attempt will be somewhere between 75% and 100% of baseDelayMs
+        // Attempts are 0-indexed, so first wait after first attempt will be somewhere between 75% and 125% of baseDelayMs
         // This calculation results in something like this for the default values:
-        // Attempt 1: 50 * (2^0) = 50 * [0.75, 1] = **[37.5, 50] ms**
-        // Attempt 2: 50 * (2^1) = 100 * [0.75, 1] = **[75, 100] ms**
+        // Between attempt 0 and 1: 50 * (2^0) = 50 * [0.75, 1.25] = **[37.5, 63.5] ms**
+        // Between attempt 1 and 2: 50 * (2^1) = 100 * [0.75, 1.25] = **[75, 125] ms**
         // etc...
-        const delayMs = Math.ceil(baseDelayMs * 2 ** attempt * (0.75 + Math.random() * 0.25));
+        const delayMs = Math.ceil(baseDelayMs * 2 ** attempt * (0.75 + Math.random() * 0.5));
+        getLogger().info('Retrying transaction', {
+          attempt,
+          attemptDurationMs,
+          transactionAttempts,
+          delayMs,
+          baseDelayMs,
+        });
         await sleep(delayMs);
+      } else {
+        getLogger().info('Transaction failed final attempt', {
+          attempt,
+          attemptDurationMs,
+          transactionAttempts,
+        });
       }
     }
 
