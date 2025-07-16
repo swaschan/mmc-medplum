@@ -12,9 +12,7 @@ import { App } from './App';
 
 const medplum = new MedplumClient({
   onUnauthenticated: () => (window.location.href = '/'),
-  baseUrl: import.meta.env.VITE_MEDPLUM_BASE_URL, // Use env var or fallback
-  clientId: import.meta.env.VITE_MEDPLUM_CLIENT_ID,
-  clientSecret: import.meta.env.VITE_MEDPLUM_CLIENT_SECRET,
+  // baseUrl: 'http://localhost:8103/', // Uncomment this to run against the server on your localhost
   cacheTime: 60000,
   autoBatchTime: 100,
 });

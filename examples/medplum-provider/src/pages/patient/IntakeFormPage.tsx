@@ -105,6 +105,7 @@ const questionnaire: Questionnaire = {
           linkId: 'ssn',
           text: 'Social Security Number',
           type: 'string',
+          required: true,
         },
         {
           linkId: 'race',
