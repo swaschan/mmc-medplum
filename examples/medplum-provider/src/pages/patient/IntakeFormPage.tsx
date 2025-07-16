@@ -2,29 +2,14 @@ import { showNotification } from '@mantine/notifications';
 import { normalizeErrorString } from '@medplum/core';
 import { Questionnaire, QuestionnaireResponse } from '@medplum/fhirtypes';
 import { Document, Loading, QuestionnaireForm, useMedplum, useMedplumProfile } from '@medplum/react';
-import { JSX, useCallback, useEffect } from 'react';
+import { JSX, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { onboardPatient } from '../../utils/intake-form';
-import { ensureValueSetsLoaded } from '../../utils/valueSetLoader';
 
 export function IntakeFormPage(): JSX.Element {
   const navigate = useNavigate();
   const medplum = useMedplum();
   const profile = useMedplumProfile();
-
-  // Load ValueSets when the component mounts
-  useEffect(() => {
-    if (medplum.isAuthenticated()) {
-      ensureValueSetsLoaded(medplum).catch(error => {
-        console.error('Failed to load ValueSets:', error);
-        showNotification({
-          color: 'yellow',
-          message: 'Some form options may not display correctly. Please try again later.',
-          autoClose: 5000,
-        });
-      });
-    }
-  }, [medplum]);
 
   const handleOnSubmit = useCallback(
     async (response: QuestionnaireResponse) => {
@@ -32,8 +17,6 @@ export function IntakeFormPage(): JSX.Element {
         return;
       }
       try {
-        // Ensure ValueSets are loaded before processing the form
-        await ensureValueSetsLoaded(medplum);
         const patient = await onboardPatient(medplum, questionnaire, response);
         navigate(`/Patient/${patient.id}/timeline`)?.catch(console.error);
       } catch (error) {
@@ -124,11 +107,29 @@ const questionnaire: Questionnaire = {
           type: 'string',
         },
         {
+          linkId: 'race',
+          text: 'Race',
+          type: 'choice',
+          answerValueSet: 'http://hl7.org/fhir/us/core/ValueSet/omb-race-category',
+        },
+        {
+          linkId: 'ethnicity',
+          text: 'Ethnicity',
+          type: 'choice',
+          answerValueSet: 'http://hl7.org/fhir/us/core/ValueSet/omb-ethnicity-category',
+        },
+        {
           linkId: 'gender-identity',
           text: 'Gender Identity',
           type: 'choice',
           answerValueSet: 'http://cts.nlm.nih.gov/fhir/ValueSet/2.16.840.1.113762.1.4.1021.32',
           required: true,
+        },
+        {
+          linkId: 'sexual-orientation',
+          text: 'Sexual Orientation',
+          type: 'choice',
+          answerValueSet: 'http://hl7.org/fhir/us/core/ValueSet/us-core-sexual-orientation',
         },
       ],
     },
