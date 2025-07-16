@@ -101,8 +101,6 @@ export async function onboardPatient(
     }
   }
 
-  addExtension(patient, extensionURLMapping.race, 'valueCoding', answers['race'], 'ombCategory');
-  addExtension(patient, extensionURLMapping.ethnicity, 'valueCoding', answers['ethnicity'], 'ombCategory');
   addExtension(patient, extensionURLMapping.veteran, 'valueBoolean', answers['veteran-status']);
 
   addLanguage(patient, answers['languages-spoken']?.valueCoding);
@@ -118,16 +116,6 @@ export async function onboardPatient(
   await medplum.createResource(response);
 
   // Handle observations
-
-  await upsertObservation(
-    medplum,
-    patient,
-    observationCodeMapping.sexualOrientation,
-    observationCategoryMapping.socialHistory,
-    'valueCodeableConcept',
-    answers['sexual-orientation']?.valueCoding,
-    PROFILE_URLS.ObservationSexualOrientation
-  );
 
   await upsertObservation(
     medplum,
